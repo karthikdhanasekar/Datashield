@@ -1,0 +1,61 @@
+# Resource Quotas to prevent resource exhaustion
+
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: datashield-compute-quota
+  namespace: datashield
+spec:
+  hard:
+    requests.cpu: "50"
+    requests.memory: "100Gi"
+    limits.cpu: "100"
+    limits.memory: "200Gi"
+    pods: "100"
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: datashield-storage-quota
+  namespace: datashield
+spec:
+  hard:
+    requests.storage: "500Gi"
+    persistentvolumeclaims: "20"
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: datashield-limit-range
+  namespace: datashield
+spec:
+  limits:
+    # Container limits
+    - type: Container
+      default:
+        cpu: "1000m"
+        memory: "2Gi"
+      defaultRequest:
+        cpu: "100m"
+        memory: "256Mi"
+      max:
+        cpu: "4000m"
+        memory: "8Gi"
+      min:
+        cpu: "50m"
+        memory: "128Mi"
+    # Pod limits
+    - type: Pod
+      max:
+        cpu: "8000m"
+        memory: "16Gi"
+      min:
+        cpu: "100m"
+        memory: "256Mi"
+    # PVC limits
+    - type: PersistentVolumeClaim
+      max:
+        storage: "100Gi"
+      min:
+        storage: "1Gi"

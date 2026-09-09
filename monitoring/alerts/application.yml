@@ -1,0 +1,269 @@
+# Application-level alerts for DataShield OSINT
+# ══════════════════════════════════════════════════════════════════════════════
+
+groups:
+  - name: application_alerts
+    interval: 30s
+    rules:
+      # ════════════════════════════════════════════════════════════════════════
+      # Service Availability
+      # ════════════════════════════════════════════════════════════════════════
+      - alert: ServiceDown
+        expr: up{job="datashield-backend"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: backend
+        annotations:
+          summary: "DataShield backend service is down"
+          description: "Backend service {{ $labels.instance }} has been down for more than 2 minutes."
+          runbook: "https://docs.datashield.com/runbooks/service-down"
+
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum(rate(http_requests_total{status=~"5.."}[5m])) by (service)
+            /
+            sum(rate(http_requests_total[5m])) by (service)
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          component: backend
+        annotations:
+          summary: "High HTTP error rate detected"
+          description: "Service {{ $labels.service }} has {{ $value | humanizePercentage }} error rate."
+
+      - alert: CriticalErrorRate
+        expr: |
+          (
+            sum(rate(http_requests_total{status=~"5.."}[5m])) by (service)
+            /
+            sum(rate(http_requests_total[5m])) by (service)
+          ) > 0.10
+        for: 2m
+        labels:
+          severity: critical
+          component: backend
+        annotations:
+          summary: "Critical HTTP error rate detected"
+          description: "Service {{ $labels.service }} has {{ $value | humanizePercentage }} error rate (>10%)."
+
+      # ════════════════════════════════════════════════════════════════════════
+      # Response Time / Latency
+      # ════════════════════════════════════════════════════════════════════════
+      - alert: HighResponseTime
+        expr: |
+          histogram_quantile(0.95, 
+            sum(rate(http_request_duration_seconds_bucket[5m])) by (le, endpoint)
+          ) > 2
+        for: 10m
+        labels:
+          severity: warning
+          component: backend
+        annotations:
+          summary: "High API response time"
+          description: "95th percentile response time for {{ $labels.endpoint }} is {{ $value }}s (>2s)."
+
+      - alert: VeryHighResponseTime
+        expr: |
+          histogram_quantile(0.95, 
+            sum(rate(http_request_duration_seconds_bucket[5m])) by (le, endpoint)
+          ) > 5
+        for: 5m
+        labels:
+          severity: critical
+          component: backend
+        annotations:
+          summary: "Very high API response time"
+          description: "95th percentile response time for {{ $labels.endpoint }} is {{ $value }}s (>5s). Service degraded."
+
+      # ════════════════════════════════════════════════════════════════════════
+      # Request Rate Anomalies
+      # ════════════════════════════════════════════════════════════════════════
+      - alert: UnusualTrafficSpike
+        expr: |
+          (
+            sum(rate(http_requests_total[5m])) by (service)
+            /
+            avg_over_time(sum(rate(http_requests_total[5m])) by (service)[1h:5m])
+          ) > 3
+        for: 10m
+        labels:
+          severity: warning
+          component: backend
+        annotations:
+          summary: "Unusual traffic spike detected"
+          description: "Request rate for {{ $labels.service }} is {{ $value }}x higher than usual. Possible DDoS?"
+
+      - alert: TrafficDrop
+        expr: |
+          (
+            sum(rate(http_requests_total[5m])) by (service)
+            /
+            avg_over_time(sum(rate(http_requests_total[5m])) by (service)[1h:5m])
+          ) < 0.3
+        for: 15m
+        labels:
+          severity: warning
+          component: backend
+        annotations:
+          summary: "Unusual traffic drop detected"
+          description: "Request rate for {{ $labels.service }} is {{ $value }}x lower than usual."
+
+      # ════════════════════════════════════════════════════════════════════════
+      # Celery Workers
+      # ════════════════════════════════════════════════════════════════════════
+      - alert: CeleryWorkersDown
+        expr: flower_workers_total < 1
+        for: 5m
+        labels:
+          severity: critical
+          component: celery
+        annotations:
+          summary: "No Celery workers available"
+          description: "All Celery workers are down. Background tasks will not be processed."
+
+      - alert: CeleryQueueBacklog
+        expr: flower_queue_length > 1000
+        for: 10m
+        labels:
+          severity: warning
+          component: celery
+        annotations:
+          summary: "Large Celery queue backlog"
+          description: "Celery queue has {{ $value }} pending tasks. Consider scaling workers."
+
+      - alert: CeleryTaskFailureRate
+        expr: |
+          (
+            rate(flower_task_failed_total[5m])
+            /
+            rate(flower_task_received_total[5m])
+          ) > 0.10
+        for: 10m
+        labels:
+          severity: warning
+          component: celery
+        annotations:
+          summary: "High Celery task failure rate"
+          description: "{{ $value | humanizePercentage }} of Celery tasks are failing."
+
+      # ════════════════════════════════════════════════════════════════════════
+      # OSINT Scan Monitoring
+      # ════════════════════════════════════════════════════════════════════════
+      - alert: HighScanFailureRate
+        expr: |
+          (
+            sum(rate(osint_scan_failed_total[15m]))
+            /
+            sum(rate(osint_scan_started_total[15m]))
+          ) > 0.20
+        for: 15m
+        labels:
+          severity: warning
+          component: osint
+        annotations:
+          summary: "High OSINT scan failure rate"
+          description: "{{ $value | humanizePercentage }} of OSINT scans are failing."
+
+      - alert: ScanProcessingTimeHigh
+        expr: |
+          histogram_quantile(0.95, 
+            sum(rate(osint_scan_duration_seconds_bucket[15m])) by (le, scan_type)
+          ) > 600
+        for: 20m
+        labels:
+          severity: warning
+          component: osint
+        annotations:
+          summary: "High scan processing time"
+          description: "95th percentile scan time for {{ $labels.scan_type }} is {{ $value }}s (>10min)."
+
+      # ════════════════════════════════════════════════════════════════════════
+      # Authentication & Security
+      # ════════════════════════════════════════════════════════════════════════
+      - alert: HighAuthenticationFailureRate
+        expr: |
+          sum(rate(auth_login_failed_total[5m])) by (service) > 10
+        for: 5m
+        labels:
+          severity: warning
+          component: security
+        annotations:
+          summary: "High authentication failure rate"
+          description: "{{ $value }} authentication failures per second. Possible brute force attack."
+
+      - alert: SuspiciousAuthenticationActivity
+        expr: |
+          sum(rate(auth_login_failed_total[5m])) by (service) > 50
+        for: 2m
+        labels:
+          severity: critical
+          component: security
+        annotations:
+          summary: "Suspicious authentication activity detected"
+          description: "{{ $value }} authentication failures per second. Likely brute force attack!"
+
+      - alert: UnauthorizedAccessAttempts
+        expr: |
+          sum(rate(http_requests_total{status="403"}[5m])) by (service) > 20
+        for: 5m
+        labels:
+          severity: warning
+          component: security
+        annotations:
+          summary: "High rate of unauthorized access attempts"
+          description: "{{ $value }} 403 responses per second on {{ $labels.service }}."
+
+      # ════════════════════════════════════════════════════════════════════════
+      # Rate Limiting
+      # ════════════════════════════════════════════════════════════════════════
+      - alert: RateLimitExceeded
+        expr: |
+          sum(rate(http_requests_total{status="429"}[5m])) by (service) > 10
+        for: 10m
+        labels:
+          severity: info
+          component: ratelimit
+        annotations:
+          summary: "Rate limit frequently exceeded"
+          description: "{{ $value }} rate limit responses per second on {{ $labels.service }}."
+
+      # ════════════════════════════════════════════════════════════════════════
+      # SSL Certificate Expiration
+      # ════════════════════════════════════════════════════════════════════════
+      - alert: SSLCertificateExpiringSoon
+        expr: |
+          probe_ssl_earliest_cert_expiry - time() < 86400 * 7
+        for: 1h
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "SSL certificate expiring soon"
+          description: "SSL certificate for {{ $labels.instance }} expires in {{ $value | humanizeDuration }}."
+
+      - alert: SSLCertificateExpired
+        expr: |
+          probe_ssl_earliest_cert_expiry - time() < 0
+        for: 5m
+        labels:
+          severity: critical
+          component: infrastructure
+        annotations:
+          summary: "SSL certificate expired"
+          description: "SSL certificate for {{ $labels.instance }} has expired!"
+
+      # ════════════════════════════════════════════════════════════════════════
+      # Health Endpoint Monitoring
+      # ════════════════════════════════════════════════════════════════════════
+      - alert: HealthCheckFailing
+        expr: probe_success{job="blackbox-http"} == 0
+        for: 3m
+        labels:
+          severity: critical
+          component: infrastructure
+        annotations:
+          summary: "Health check failing"
+          description: "Health check for {{ $labels.instance }} has been failing for 3 minutes."

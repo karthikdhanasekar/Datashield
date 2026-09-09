@@ -1,0 +1,269 @@
+# Database alerts for DataShield OSINT
+# ══════════════════════════════════════════════════════════════════════════════
+
+groups:
+  - name: database_alerts
+    interval: 30s
+    rules:
+      # ════════════════════════════════════════════════════════════════════════
+      # PostgreSQL Availability
+      # ════════════════════════════════════════════════════════════════════════
+      - alert: PostgreSQLDown
+        expr: pg_up == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: postgres
+        annotations:
+          summary: "PostgreSQL is down"
+          description: "PostgreSQL database {{ $labels.instance }} is down for more than 2 minutes."
+          runbook: "https://docs.datashield.com/runbooks/postgres-down"
+
+      # ════════════════════════════════════════════════════════════════════════
+      # Connection Management
+      # ════════════════════════════════════════════════════════════════════════
+      - alert: PostgreSQLTooManyConnections
+        expr: |
+          sum(pg_stat_activity_count) by (instance) / 
+          (pg_settings_max_connections - pg_settings_superuser_reserved_connections) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          component: postgres
+        annotations:
+          summary: "PostgreSQL connection usage high"
+          description: "PostgreSQL on {{ $labels.instance }} is using {{ $value | humanizePercentage }} of available connections."
+
+      - alert: PostgreSQLConnectionsExhausted
+        expr: |
+          sum(pg_stat_activity_count) by (instance) / 
+          (pg_settings_max_connections - pg_settings_superuser_reserved_connections) > 0.95
+        for: 2m
+        labels:
+          severity: critical
+          component: postgres
+        annotations:
+          summary: "PostgreSQL connections nearly exhausted"
+          description: "PostgreSQL on {{ $labels.instance }} is using {{ $value | humanizePercentage }} of connections (>95%)."
+
+      - alert: PostgreSQLDeadlocks
+        expr: rate(pg_stat_database_deadlocks[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          component: postgres
+        annotations:
+          summary: "PostgreSQL deadlocks detected"
+          description: "Database {{ $labels.datname }} has {{ $value }} deadlocks per second."
+
+      # ════════════════════════════════════════════════════════════════════════
+      # Performance & Query Issues
+      # ════════════════════════════════════════════════════════════════════════
+      - alert: PostgreSQLSlowQueries
+        expr: |
+          pg_stat_activity_max_tx_duration > 300
+        for: 5m
+        labels:
+          severity: warning
+          component: postgres
+        annotations:
+          summary: "Long-running PostgreSQL queries detected"
+          description: "Query running for {{ $value }}s on {{ $labels.instance }}."
+
+      - alert: PostgreSQLHighRollbackRate
+        expr: |
+          rate(pg_stat_database_xact_rollback[5m]) /
+          (rate(pg_stat_database_xact_commit[5m]) + rate(pg_stat_database_xact_rollback[5m]))
+          > 0.1
+        for: 10m
+        labels:
+          severity: warning
+          component: postgres
+        annotations:
+          summary: "High transaction rollback rate"
+          description: "Database {{ $labels.datname }} has {{ $value | humanizePercentage }} rollback rate."
+
+      # ════════════════════════════════════════════════════════════════════════
+      # Replication
+      # ════════════════════════════════════════════════════════════════════════
+      - alert: PostgreSQLReplicationLag
+        expr: |
+          pg_replication_lag > 60
+        for: 5m
+        labels:
+          severity: warning
+          component: postgres
+        annotations:
+          summary: "PostgreSQL replication lag high"
+          description: "Replication lag on {{ $labels.instance }} is {{ $value }}s."
+
+      - alert: PostgreSQLReplicationSlotInactive
+        expr: pg_replication_slots_active == 0
+        for: 5m
+        labels:
+          severity: warning
+          component: postgres
+        annotations:
+          summary: "PostgreSQL replication slot inactive"
+          description: "Replication slot {{ $labels.slot_name }} on {{ $labels.instance }} is inactive."
+
+      # ════════════════════════════════════════════════════════════════════════
+      # WAL & Archive
+      # ════════════════════════════════════════════════════════════════════════
+      - alert: PostgreSQLWALArchiveFailing
+        expr: |
+          rate(pg_stat_archiver_failed_count[5m]) > 0
+        for: 10m
+        labels:
+          severity: warning
+          component: postgres
+        annotations:
+          summary: "WAL archiving is failing"
+          description: "WAL archiving on {{ $labels.instance }} has {{ $value }} failures per second."
+
+      - alert: PostgreSQLWALFilesFilling
+        expr: |
+          pg_stat_wal_count > 100
+        for: 10m
+        labels:
+          severity: warning
+          component: postgres
+        annotations:
+          summary: "Too many WAL files"
+          description: "{{ $labels.instance }} has {{ $value }} WAL files. Archive might be slow."
+
+      # ════════════════════════════════════════════════════════════════════════
+      # Cache Hit Ratio
+      # ════════════════════════════════════════════════════════════════════════
+      - alert: PostgreSQLLowCacheHitRatio
+        expr: |
+          pg_stat_database_blks_hit / 
+          (pg_stat_database_blks_hit + pg_stat_database_blks_read) < 0.90
+        for: 15m
+        labels:
+          severity: warning
+          component: postgres
+        annotations:
+          summary: "PostgreSQL cache hit ratio low"
+          description: "Database {{ $labels.datname }} has {{ $value | humanizePercentage }} cache hit ratio (<90%)."
+
+      # ════════════════════════════════════════════════════════════════════════
+      # Redis Availability & Health
+      # ════════════════════════════════════════════════════════════════════════
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: redis
+        annotations:
+          summary: "Redis is down"
+          description: "Redis instance {{ $labels.instance }} is down."
+
+      - alert: RedisMemoryUsageHigh
+        expr: |
+          (redis_memory_used_bytes / redis_memory_max_bytes) * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+          component: redis
+        annotations:
+          summary: "Redis memory usage high"
+          description: "Redis on {{ $labels.instance }} is using {{ $value }}% of max memory."
+
+      - alert: RedisMemoryFull
+        expr: |
+          (redis_memory_used_bytes / redis_memory_max_bytes) * 100 > 95
+        for: 2m
+        labels:
+          severity: critical
+          component: redis
+        annotations:
+          summary: "Redis memory nearly full"
+          description: "Redis on {{ $labels.instance }} is using {{ $value }}% of max memory (>95%)."
+
+      - alert: RedisEvictedKeysHigh
+        expr: rate(redis_evicted_keys_total[5m]) > 100
+        for: 10m
+        labels:
+          severity: warning
+          component: redis
+        annotations:
+          summary: "Redis evicting keys frequently"
+          description: "Redis on {{ $labels.instance }} is evicting {{ $value }} keys/s."
+
+      - alert: RedisRejectedConnections
+        expr: rate(redis_rejected_connections_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          component: redis
+        annotations:
+          summary: "Redis rejecting connections"
+          description: "Redis on {{ $labels.instance }} is rejecting {{ $value }} connections/s."
+
+      - alert: RedisReplicationBroken
+        expr: |
+          redis_connected_slaves < 1
+        for: 5m
+        labels:
+          severity: critical
+          component: redis
+        annotations:
+          summary: "Redis replication broken"
+          description: "Redis master {{ $labels.instance }} has no connected slaves."
+
+      # ════════════════════════════════════════════════════════════════════════
+      # Elasticsearch Health
+      # ════════════════════════════════════════════════════════════════════════
+      - alert: ElasticsearchClusterRed
+        expr: elasticsearch_cluster_health_status{color="red"} == 1
+        for: 5m
+        labels:
+          severity: critical
+          component: elasticsearch
+        annotations:
+          summary: "Elasticsearch cluster status is RED"
+          description: "Elasticsearch cluster {{ $labels.cluster }} is in RED state. Data loss possible."
+
+      - alert: ElasticsearchClusterYellow
+        expr: elasticsearch_cluster_health_status{color="yellow"} == 1
+        for: 15m
+        labels:
+          severity: warning
+          component: elasticsearch
+        annotations:
+          summary: "Elasticsearch cluster status is YELLOW"
+          description: "Elasticsearch cluster {{ $labels.cluster }} is in YELLOW state."
+
+      - alert: ElasticsearchHeapUsageHigh
+        expr: |
+          (elasticsearch_jvm_memory_used_bytes{area="heap"} / elasticsearch_jvm_memory_max_bytes{area="heap"}) * 100 > 80
+        for: 10m
+        labels:
+          severity: warning
+          component: elasticsearch
+        annotations:
+          summary: "Elasticsearch heap usage high"
+          description: "Elasticsearch on {{ $labels.instance }} is using {{ $value }}% heap."
+
+      - alert: ElasticsearchPendingTasks
+        expr: elasticsearch_cluster_health_number_of_pending_tasks > 10
+        for: 10m
+        labels:
+          severity: warning
+          component: elasticsearch
+        annotations:
+          summary: "Elasticsearch has pending tasks"
+          description: "Elasticsearch cluster {{ $labels.cluster }} has {{ $value }} pending tasks."
+
+      - alert: ElasticsearchDiskSpaceLow
+        expr: |
+          (elasticsearch_filesystem_data_available_bytes / elasticsearch_filesystem_data_size_bytes) * 100 < 15
+        for: 5m
+        labels:
+          severity: warning
+          component: elasticsearch
+        annotations:
+          summary: "Elasticsearch disk space low"
+          description: "Elasticsearch node {{ $labels.instance }} has {{ $value }}% disk space remaining."

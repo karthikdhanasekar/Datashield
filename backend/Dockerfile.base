@@ -1,0 +1,28 @@
+# DataShield OSINT — Base image
+# Build this ONCE: docker build -f Dockerfile.base -t datashield-base:latest .
+# Then the main Dockerfile uses it and builds in ~30 seconds.
+
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# System deps
+RUN apt-get update && apt-get install -y \
+    gcc g++ libpq-dev curl wget gnupg git \
+    libnss3 libatk1.0-0 libatk-bridge2.0-0 \
+    libdrm2 libxkbcommon0 libgtk-3-0 libgbm1 \
+    && (apt-get install -y libasound2t64 || apt-get install -y libasound2 || true) \
+    && rm -rf /var/lib/apt/lists/*
+
+# Python packages
+COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# Install theHarvester from GitHub (not on PyPI)
+RUN pip install --no-cache-dir \
+    "git+https://github.com/laramies/theHarvester.git@master#egg=theHarvester" || \
+    echo "theHarvester install failed — will use demo mode"
+
+# Playwright browser
+RUN playwright install chromium && playwright install-deps chromium || true

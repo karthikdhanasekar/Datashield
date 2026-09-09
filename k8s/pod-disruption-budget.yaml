@@ -1,0 +1,58 @@
+# Pod Disruption Budgets ensure high availability during voluntary disruptions
+# (node maintenance, cluster upgrades, etc.)
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: backend-pdb
+  namespace: datashield
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: datashield-backend
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: frontend-pdb
+  namespace: datashield
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: datashield-frontend
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: celery-worker-pdb
+  namespace: datashield
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: datashield-celery-worker
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: postgres-pdb
+  namespace: datashield
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: postgres
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: redis-pdb
+  namespace: datashield
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: redis

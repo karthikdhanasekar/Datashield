@@ -1,0 +1,173 @@
+# Kubernetes CronJob for Automated Database Backups
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backup-scripts
+  namespace: datashield
+data:
+  backup-database.sh: |
+    #!/bin/bash
+    set -euo pipefail
+    
+    log() {
+        echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*"
+    }
+    
+    log "Starting database backup..."
+    
+    TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+    BACKUP_FILE="/backups/datashield_backup_${TIMESTAMP}.sql"
+    
+    # Create backup
+    PGPASSWORD="$POSTGRES_PASSWORD" pg_dump \
+        -h postgres-service \
+        -U "$POSTGRES_USER" \
+        -d "$POSTGRES_DB" \
+        --verbose \
+        --no-owner \
+        --no-acl \
+        --format=plain \
+        --file="$BACKUP_FILE"
+    
+    # Compress
+    gzip "$BACKUP_FILE"
+    COMPRESSED_FILE="${BACKUP_FILE}.gz"
+    
+    # Upload to S3 if configured
+    if [ "${S3_ENABLED:-false}" = "true" ]; then
+        log "Uploading to S3..."
+        aws s3 cp "$COMPRESSED_FILE" "s3://${S3_BUCKET}/" \
+            ${S3_ENDPOINT:+--endpoint-url=$S3_ENDPOINT}
+    fi
+    
+    # Cleanup old backups
+    RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-30}"
+    find /backups -name "datashield_backup_*.sql.gz" -type f -mtime +$RETENTION_DAYS -delete
+    
+    log "Backup completed successfully"
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: database-backup
+  namespace: datashield
+  labels:
+    app: datashield-backup
+spec:
+  # Run daily at 2 AM
+  schedule: "0 2 * * *"
+  timeZone: "UTC"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            app: datashield-backup
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 999
+            fsGroup: 999
+          initContainers:
+          - name: wait-for-postgres
+            image: busybox:1.35
+            command: ['sh', '-c', 'until nc -z postgres-service 5432; do echo waiting for postgres; sleep 5; done;']
+          containers:
+          - name: backup
+            image: postgres:15-alpine
+            command: ["/bin/sh"]
+            args: ["-c", "/scripts/backup-database.sh"]
+            envFrom:
+            - configMapRef:
+                name: datashield-config
+            - secretRef:
+                name: datashield-secrets
+            env:
+            - name: S3_ENABLED
+              value: "true"
+            - name: BACKUP_RETENTION_DAYS
+              value: "30"
+            volumeMounts:
+            - name: backup-storage
+              mountPath: /backups
+            - name: scripts
+              mountPath: /scripts
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "100m"
+              limits:
+                memory: "512Mi"
+                cpu: "500m"
+          volumes:
+          - name: backup-storage
+            persistentVolumeClaim:
+              claimName: backup-pvc
+          - name: scripts
+            configMap:
+              name: backup-scripts
+              defaultMode: 0755
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: backup-pvc
+  namespace: datashield
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: standard
+  resources:
+    requests:
+      storage: 50Gi
+---
+# Manual backup job (on-demand)
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: database-backup-manual
+  namespace: datashield
+  labels:
+    app: datashield-backup
+    type: manual
+spec:
+  backoffLimit: 1
+  template:
+    metadata:
+      labels:
+        app: datashield-backup
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+      containers:
+      - name: backup
+        image: postgres:15-alpine
+        command: ["/bin/sh"]
+        args: ["-c", "/scripts/backup-database.sh"]
+        envFrom:
+        - configMapRef:
+            name: datashield-config
+        - secretRef:
+            name: datashield-secrets
+        volumeMounts:
+        - name: backup-storage
+          mountPath: /backups
+        - name: scripts
+          mountPath: /scripts
+      volumes:
+      - name: backup-storage
+        persistentVolumeClaim:
+          claimName: backup-pvc
+      - name: scripts
+        configMap:
+          name: backup-scripts
+          defaultMode: 0755

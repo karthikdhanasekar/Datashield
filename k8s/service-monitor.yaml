@@ -1,0 +1,36 @@
+# ServiceMonitor for Prometheus Operator to scrape metrics
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: datashield-backend-monitor
+  namespace: datashield
+  labels:
+    app: datashield-backend
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: datashield-backend
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-metrics
+  namespace: datashield
+  labels:
+    app: datashield-backend
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8000
+      targetPort: 8000
+      name: http
+  selector:
+    app: datashield-backend

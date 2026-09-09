@@ -1,0 +1,103 @@
+# ── FastAPI Core ──────────────────────────────────────────────────────────────
+fastapi>=0.109.0,<1.0.0
+uvicorn[standard]>=0.27.0,<1.0.0
+python-multipart>=0.0.9
+httpx>=0.26.0,<1.0.0
+
+# ── Database ──────────────────────────────────────────────────────────────────
+sqlalchemy>=2.0.25,<3.0.0
+asyncpg>=0.29.0
+alembic>=1.13.0,<2.0.0
+psycopg2-binary>=2.9.9
+
+# ── Redis ─────────────────────────────────────────────────────────────────────
+redis>=5.0.0,<6.0.0
+
+# ── Celery Task Queue ─────────────────────────────────────────────────────────
+celery[redis]>=5.3.0,<6.0.0
+flower>=2.0.0
+
+# ── Elasticsearch ─────────────────────────────────────────────────────────────
+elasticsearch[async]>=8.11.0,<9.0.0
+
+# ── Authentication & Security ─────────────────────────────────────────────────
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+pyotp>=2.9.0
+qrcode[pil]>=7.4.0
+
+# ── S3 / MinIO Storage ────────────────────────────────────────────────────────
+boto3>=1.34.0,<2.0.0
+minio>=7.2.0
+
+# ── OSINT & Web Scraping ──────────────────────────────────────────────────────
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+lxml>=5.1.0
+playwright>=1.41.0
+aiohttp>=3.9.0,<4.0.0
+
+# ── Open-Source OSINT Tools ───────────────────────────────────────────────────
+holehe>=1.61
+maigret>=0.6.1
+shodan>=1.31.0
+phonenumbers>=8.13.0
+tldextract>=5.1.0
+trio>=0.24.0
+sherlock-project>=0.14.3        # Username hunt across 400+ sites
+social-analyzer>=0.45           # Deep profile analysis across 300+ sites
+# theHarvester is installed from GitHub (not on PyPI):
+# pip install git+https://github.com/laramies/theHarvester.git
+
+# ── DNS & WHOIS ───────────────────────────────────────────────────────────────
+python-whois>=0.9.4
+dnspython>=2.5.0
+
+# ── Email / Templates ─────────────────────────────────────────────────────────
+aiosmtplib>=3.0.0
+email-validator>=2.1.0
+jinja2>=3.1.0,<4.0.0
+
+# ── SMS ───────────────────────────────────────────────────────────────────────
+twilio>=8.12.0
+
+# ── AI / OpenAI ───────────────────────────────────────────────────────────────
+openai>=1.10.0,<2.0.0
+
+# ── PDF Generation ────────────────────────────────────────────────────────────
+reportlab>=4.1.0
+PyPDF2>=3.0.0
+
+# ── Image Processing ─────────────────────────────────────────────────────────
+Pillow>=10.2.0
+
+# ── Data Processing ───────────────────────────────────────────────────────────
+pandas>=2.2.0
+pydantic>=2.6.0,<3.0.0
+pydantic-settings>=2.1.0,<3.0.0
+
+# ── Cryptography & Security ──────────────────────────────────────────────────
+cryptography>=42.0.0
+bleach>=6.1.0  # HTML sanitization
+
+# ── Rate Limiting ─────────────────────────────────────────────────────────────
+slowapi>=0.1.9
+limits>=3.9.0
+
+# ── Monitoring ────────────────────────────────────────────────────────────────
+prometheus-client>=0.19.0
+prometheus-fastapi-instrumentator>=6.1.0
+
+# ── Utilities ────────────────────────────────────────────────────────────────
+python-dotenv>=1.0.0
+pytz>=2024.1
+tenacity>=8.2.0
+structlog>=24.1.0
+rich>=13.7.0
+
+# ── Testing ───────────────────────────────────────────────────────────────────
+pytest>=7.4.0
+pytest-asyncio>=0.23.0
+pytest-cov>=4.1.0
+factory-boy>=3.3.0
+aiosqlite>=0.20.0

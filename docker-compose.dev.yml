@@ -1,0 +1,253 @@
+# docker-compose.dev.yml — Fast development startup
+# Core services + optional monitoring stack (Prometheus, Grafana, Elasticsearch)
+# Usage:
+#   Minimal:          docker compose -f docker-compose.dev.yml up
+#   With monitoring:  docker compose -f docker-compose.dev.yml --profile monitoring up
+#   With ES:          docker compose -f docker-compose.dev.yml --profile search up
+#   Everything:       docker compose -f docker-compose.dev.yml --profile monitoring --profile search up
+
+services:
+
+  # ── PostgreSQL ─────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: datashield_postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-datashield}
+      POSTGRES_USER: ${POSTGRES_USER:-datashield}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-datashield_dev_pass_2024}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-datashield}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - datashield_net
+
+  # ── Redis ──────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: datashield_redis
+    command: redis-server --requirepass ${REDIS_PASSWORD:-redis_dev_pass_2024} --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis_dev_pass_2024}", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - datashield_net
+
+  # ── MinIO ──────────────────────────────────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: datashield_minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio_dev_pass_2024}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    networks:
+      - datashield_net
+
+  # ── Elasticsearch (optional — profile: search) ────────────────────────────
+  # Enable with: docker compose -f docker-compose.dev.yml --profile search up
+  # Requires ~1GB RAM. Without it, /scans/search falls back to PostgreSQL ILIKE.
+  elasticsearch:
+    profiles: ["search"]
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: datashield_elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - cluster.routing.allocation.disk.threshold_enabled=false
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    networks:
+      - datashield_net
+
+  # ── FastAPI Backend ────────────────────────────────────────────────────────
+  backend:
+    image: datashield-osint-backend:latest
+    pull_policy: never
+    container_name: datashield_backend
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/app
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-datashield}:${POSTGRES_PASSWORD:-datashield_dev_pass_2024}@postgres:5432/${POSTGRES_DB:-datashield}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis_dev_pass_2024}@redis:6379/0
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minio_dev_pass_2024}
+      MINIO_SECURE: "false"
+      SECRET_KEY: ${SECRET_KEY:-datashield-super-secret-key-for-local-dev-only-32chars}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-datashield-jwt-secret-key-for-local-dev-only}
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:-redis_dev_pass_2024}@redis:6379/1
+      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD:-redis_dev_pass_2024}@redis:6379/2
+      ENVIRONMENT: development
+      DEBUG: "true"
+      TOTP_ISSUER: "DataShield OSINT"
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - datashield_net
+
+  # ── Celery Worker ──────────────────────────────────────────────────────────
+  celery_worker:
+    image: datashield-osint-celery_worker:latest
+    pull_policy: never
+    container_name: datashield_celery_worker
+    command: celery -A app.core.celery_app worker --loglevel=info --concurrency=2 -Q scans,monitoring,notifications,takedowns,reports,celery
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-datashield}:${POSTGRES_PASSWORD:-datashield_dev_pass_2024}@postgres:5432/${POSTGRES_DB:-datashield}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis_dev_pass_2024}@redis:6379/0
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minio_dev_pass_2024}
+      MINIO_SECURE: "false"
+      SECRET_KEY: ${SECRET_KEY:-datashield-super-secret-key-for-local-dev-only-32chars}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-datashield-jwt-secret-key-for-local-dev-only}
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:-redis_dev_pass_2024}@redis:6379/1
+      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD:-redis_dev_pass_2024}@redis:6379/2
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - backend
+      - redis
+    networks:
+      - datashield_net
+
+  # ── Celery Beat ────────────────────────────────────────────────────────────
+  celery_beat:
+    image: datashield-osint-celery_beat:latest
+    pull_policy: never
+    container_name: datashield_celery_beat
+    command: celery -A app.core.celery_app beat --loglevel=info
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-datashield}:${POSTGRES_PASSWORD:-datashield_dev_pass_2024}@postgres:5432/${POSTGRES_DB:-datashield}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis_dev_pass_2024}@redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-datashield-super-secret-key-for-local-dev-only-32chars}
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:-redis_dev_pass_2024}@redis:6379/1
+      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD:-redis_dev_pass_2024}@redis:6379/2
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - celery_worker
+    networks:
+      - datashield_net
+
+  # ── Next.js Frontend ───────────────────────────────────────────────────────
+  frontend:
+    image: datashield-osint-frontend:latest
+    pull_policy: never
+    container_name: datashield_frontend
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      NODE_ENV: production
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - datashield_net
+
+  # ── Flower (Celery Monitor) ────────────────────────────────────────────────
+  flower:
+    image: datashield-osint-flower:latest
+    pull_policy: never
+    container_name: datashield_flower
+    command: celery -A app.core.celery_app flower --port=5555
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-datashield}:${POSTGRES_PASSWORD:-datashield_dev_pass_2024}@postgres:5432/${POSTGRES_DB:-datashield}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis_dev_pass_2024}@redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-datashield-super-secret-key-for-local-dev-only-32chars}
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:-redis_dev_pass_2024}@redis:6379/1
+      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD:-redis_dev_pass_2024}@redis:6379/2
+    ports:
+      - "5555:5555"
+    depends_on:
+      - redis
+    networks:
+      - datashield_net
+
+  # ── Prometheus (optional — profile: monitoring) ────────────────────────────
+  prometheus:
+    profiles: ["monitoring"]
+    image: prom/prometheus:latest
+    container_name: datashield_prometheus
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+    ports:
+      - "9090:9090"
+    depends_on:
+      - backend
+    networks:
+      - datashield_net
+
+  # ── Grafana (optional — profile: monitoring) ───────────────────────────────
+  # Access at: http://localhost:3001  (admin / ${GRAFANA_PASSWORD:-changeme})
+  grafana:
+    profiles: ["monitoring"]
+    image: grafana/grafana:10.2.0
+    container_name: datashield_grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-changeme}
+      GF_PATHS_PROVISIONING: /etc/grafana/provisioning
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - datashield_net
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  elasticsearch_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  datashield_net:
+    driver: bridge

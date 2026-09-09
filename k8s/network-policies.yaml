@@ -1,0 +1,221 @@
+# Network Policies for Zero-Trust Security Model
+# Default deny all traffic, then explicitly allow required connections
+
+---
+# Default deny all ingress traffic
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: datashield
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+---
+# Allow backend to communicate with postgres
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-to-postgres
+  namespace: datashield
+spec:
+  podSelector:
+    matchLabels:
+      app: postgres
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: datashield-backend
+        - podSelector:
+            matchLabels:
+              app: datashield-celery-worker
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+# Allow backend and celery to communicate with redis
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-to-redis
+  namespace: datashield
+spec:
+  podSelector:
+    matchLabels:
+      app: redis
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: datashield-backend
+        - podSelector:
+            matchLabels:
+              app: datashield-celery-worker
+        - podSelector:
+            matchLabels:
+              app: datashield-celery-beat
+      ports:
+        - protocol: TCP
+          port: 6379
+---
+# Allow backend to communicate with elasticsearch
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-to-elasticsearch
+  namespace: datashield
+spec:
+  podSelector:
+    matchLabels:
+      app: elasticsearch
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: datashield-backend
+        - podSelector:
+            matchLabels:
+              app: datashield-celery-worker
+      ports:
+        - protocol: TCP
+          port: 9200
+        - protocol: TCP
+          port: 9300
+---
+# Allow backend and celery to communicate with minio
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-to-minio
+  namespace: datashield
+spec:
+  podSelector:
+    matchLabels:
+      app: minio
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: datashield-backend
+        - podSelector:
+            matchLabels:
+              app: datashield-celery-worker
+      ports:
+        - protocol: TCP
+          port: 9000
+---
+# Allow ingress controller to reach backend
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ingress-to-backend
+  namespace: datashield
+spec:
+  podSelector:
+    matchLabels:
+      app: datashield-backend
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8000
+---
+# Allow ingress controller to reach frontend
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ingress-to-frontend
+  namespace: datashield
+spec:
+  podSelector:
+    matchLabels:
+      app: datashield-frontend
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 3000
+---
+# Allow prometheus to scrape metrics from backend
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: prometheus-to-backend
+  namespace: datashield
+spec:
+  podSelector:
+    matchLabels:
+      app: datashield-backend
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: monitoring
+        - podSelector:
+            matchLabels:
+              app: prometheus
+      ports:
+        - protocol: TCP
+          port: 8000
+---
+# Allow DNS queries
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+  namespace: datashield
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+---
+# Allow all pods to make external HTTPS requests (for OSINT APIs)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-external-https
+  namespace: datashield
+spec:
+  podSelector:
+    matchLabels:
+      app: datashield-backend
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 80

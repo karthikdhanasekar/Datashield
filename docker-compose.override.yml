@@ -1,0 +1,44 @@
+# docker-compose.override.yml — Development overrides
+# Merged automatically by docker-compose when present.
+
+services:
+  backend:
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/app
+    environment:
+      - ENVIRONMENT=development
+      - DEBUG=true
+    volumes:
+      - ./backend:/app
+
+  celery_worker:
+    command: celery -A app.core.celery_app worker --loglevel=info --concurrency=2
+    environment:
+      - ENVIRONMENT=development
+
+  # Expose databases in dev
+  postgres:
+    ports:
+      - "5432:5432"
+
+  redis:
+    ports:
+      - "6379:6379"
+
+  # Flower — Celery task monitor
+  flower:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: datashield_flower
+    command: celery -A app.core.celery_app flower --port=5555 --broker=redis://:${REDIS_PASSWORD:-redis_dev_pass_2024}@redis:6379/1
+    environment:
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-redis_dev_pass_2024}@redis:6379/0
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-datashield}:${POSTGRES_PASSWORD:-datashield_dev_pass_2024}@postgres:5432/${POSTGRES_DB:-datashield}
+      - SECRET_KEY=${SECRET_KEY:-datashield-super-secret-key-for-local-dev-only-32chars}
+    ports:
+      - "5555:5555"
+    depends_on:
+      - redis
+      - celery_worker
+    networks:
+      - datashield_net

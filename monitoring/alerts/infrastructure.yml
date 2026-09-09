@@ -1,0 +1,281 @@
+# Infrastructure alerts for DataShield OSINT
+# ══════════════════════════════════════════════════════════════════════════════
+
+groups:
+  - name: infrastructure_alerts
+    interval: 30s
+    rules:
+      # ════════════════════════════════════════════════════════════════════════
+      # CPU Alerts
+      # ════════════════════════════════════════════════════════════════════════
+      - alert: HighCPUUsage
+        expr: |
+          100 - (avg by (instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 10m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "High CPU usage detected"
+          description: "CPU usage on {{ $labels.instance }} is {{ $value }}%."
+
+      - alert: CriticalCPUUsage
+        expr: |
+          100 - (avg by (instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 95
+        for: 5m
+        labels:
+          severity: critical
+          component: infrastructure
+        annotations:
+          summary: "Critical CPU usage detected"
+          description: "CPU usage on {{ $labels.instance }} is {{ $value }}% (>95%). Immediate action required."
+
+      # ════════════════════════════════════════════════════════════════════════
+      # Memory Alerts
+      # ════════════════════════════════════════════════════════════════════════
+      - alert: HighMemoryUsage
+        expr: |
+          (
+            (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) 
+            / 
+            node_memory_MemTotal_bytes
+          ) * 100 > 80
+        for: 10m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "High memory usage detected"
+          description: "Memory usage on {{ $labels.instance }} is {{ $value }}%."
+
+      - alert: CriticalMemoryUsage
+        expr: |
+          (
+            (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) 
+            / 
+            node_memory_MemTotal_bytes
+          ) * 100 > 90
+        for: 5m
+        labels:
+          severity: critical
+          component: infrastructure
+        annotations:
+          summary: "Critical memory usage detected"
+          description: "Memory usage on {{ $labels.instance }} is {{ $value }}% (>90%)."
+
+      - alert: OutOfMemory
+        expr: |
+          (
+            (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) 
+            / 
+            node_memory_MemTotal_bytes
+          ) * 100 > 95
+        for: 2m
+        labels:
+          severity: critical
+          component: infrastructure
+        annotations:
+          summary: "System out of memory"
+          description: "{{ $labels.instance }} is running out of memory ({{ $value }}%)."
+
+      # ════════════════════════════════════════════════════════════════════════
+      # Disk Space Alerts
+      # ════════════════════════════════════════════════════════════════════════
+      - alert: DiskSpaceLow
+        expr: |
+          (
+            (node_filesystem_avail_bytes{fstype!~"tmpfs|fuse.lxcfs|squashfs|vfat"} / node_filesystem_size_bytes) * 100
+          ) < 20
+        for: 10m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "Disk space low"
+          description: "Disk {{ $labels.mountpoint }} on {{ $labels.instance }} has only {{ $value }}% free space."
+
+      - alert: DiskSpaceCritical
+        expr: |
+          (
+            (node_filesystem_avail_bytes{fstype!~"tmpfs|fuse.lxcfs|squashfs|vfat"} / node_filesystem_size_bytes) * 100
+          ) < 10
+        for: 5m
+        labels:
+          severity: critical
+          component: infrastructure
+        annotations:
+          summary: "Disk space critically low"
+          description: "Disk {{ $labels.mountpoint }} on {{ $labels.instance }} has only {{ $value }}% free space (<10%)."
+
+      - alert: InodeLow
+        expr: |
+          (
+            node_filesystem_files_free / node_filesystem_files
+          ) * 100 < 10
+        for: 10m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "Inode usage high"
+          description: "Only {{ $value }}% inodes available on {{ $labels.mountpoint }} at {{ $labels.instance }}."
+
+      # ════════════════════════════════════════════════════════════════════════
+      # Disk I/O Alerts
+      # ════════════════════════════════════════════════════════════════════════
+      - alert: HighDiskIOWait
+        expr: |
+          avg by (instance) (irate(node_cpu_seconds_total{mode="iowait"}[5m])) * 100 > 10
+        for: 10m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "High disk I/O wait time"
+          description: "I/O wait time on {{ $labels.instance }} is {{ $value }}%."
+
+      - alert: DiskReadLatencyHigh
+        expr: |
+          rate(node_disk_read_time_seconds_total[5m]) / rate(node_disk_reads_completed_total[5m]) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "High disk read latency"
+          description: "Disk read latency on {{ $labels.instance }} is {{ $value }}s."
+
+      # ════════════════════════════════════════════════════════════════════════
+      # Network Alerts
+      # ════════════════════════════════════════════════════════════════════════
+      - alert: HighNetworkTraffic
+        expr: |
+          rate(node_network_receive_bytes_total{device!~"lo|docker.*|veth.*"}[5m]) > 100 * 1024 * 1024
+        for: 10m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "High network traffic"
+          description: "Network receive traffic on {{ $labels.device }} at {{ $labels.instance }} is {{ $value | humanize }}B/s (>100MB/s)."
+
+      - alert: NetworkErrorsHigh
+        expr: |
+          rate(node_network_receive_errs_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "High network error rate"
+          description: "Network errors on {{ $labels.device }} at {{ $labels.instance }}: {{ $value }} errors/s."
+
+      # ════════════════════════════════════════════════════════════════════════
+      # System Load
+      # ════════════════════════════════════════════════════════════════════════
+      - alert: SystemLoadHigh
+        expr: |
+          node_load15 / count without (cpu, mode) (node_cpu_seconds_total{mode="system"}) > 0.8
+        for: 10m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "System load is high"
+          description: "15-minute load average on {{ $labels.instance }} is {{ $value }} (>80% of CPU cores)."
+
+      - alert: SystemLoadCritical
+        expr: |
+          node_load5 / count without (cpu, mode) (node_cpu_seconds_total{mode="system"}) > 1.5
+        for: 5m
+        labels:
+          severity: critical
+          component: infrastructure
+        annotations:
+          summary: "System load is critical"
+          description: "5-minute load average on {{ $labels.instance }} is {{ $value }} (>150% of CPU cores)."
+
+      # ════════════════════════════════════════════════════════════════════════
+      # Container Alerts
+      # ════════════════════════════════════════════════════════════════════════
+      - alert: ContainerRestarting
+        expr: |
+          rate(container_restart_count[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          component: container
+        annotations:
+          summary: "Container restarting frequently"
+          description: "Container {{ $labels.name }} is restarting ({{ $value }} restarts/s)."
+
+      - alert: ContainerMemoryNearLimit
+        expr: |
+          (
+            container_memory_usage_bytes / container_spec_memory_limit_bytes
+          ) * 100 > 90
+        for: 5m
+        labels:
+          severity: warning
+          component: container
+        annotations:
+          summary: "Container memory usage high"
+          description: "Container {{ $labels.name }} is using {{ $value }}% of its memory limit."
+
+      - alert: ContainerCPUThrottling
+        expr: |
+          rate(container_cpu_cfs_throttled_seconds_total[5m]) > 0.5
+        for: 10m
+        labels:
+          severity: warning
+          component: container
+        annotations:
+          summary: "Container CPU throttling detected"
+          description: "Container {{ $labels.name }} is being CPU throttled ({{ $value }}s/s)."
+
+      # ════════════════════════════════════════════════════════════════════════
+      # Kubernetes Alerts (if applicable)
+      # ════════════════════════════════════════════════════════════════════════
+      - alert: PodNotReady
+        expr: |
+          kube_pod_status_phase{phase!="Running"} == 1
+        for: 5m
+        labels:
+          severity: warning
+          component: kubernetes
+        annotations:
+          summary: "Pod not in Running state"
+          description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is in {{ $labels.phase }} state."
+
+      - alert: PodCrashLooping
+        expr: |
+          rate(kube_pod_container_status_restarts_total[5m]) > 0.5
+        for: 10m
+        labels:
+          severity: critical
+          component: kubernetes
+        annotations:
+          summary: "Pod is crash looping"
+          description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is crash looping."
+
+      - alert: NodeNotReady
+        expr: |
+          kube_node_status_condition{condition="Ready",status="true"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          component: kubernetes
+        annotations:
+          summary: "Kubernetes node not ready"
+          description: "Node {{ $labels.node }} is not ready."
+
+      - alert: PVCPendingBinding
+        expr: |
+          kube_persistentvolumeclaim_status_phase{phase="Pending"} == 1
+        for: 10m
+        labels:
+          severity: warning
+          component: kubernetes
+        annotations:
+          summary: "PVC pending binding"
+          description: "PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} is pending for 10+ minutes."
