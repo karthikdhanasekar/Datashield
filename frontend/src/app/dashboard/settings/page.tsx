@@ -164,7 +164,7 @@ export default function SettingsPage() {
                   <QRCode value={mfaSetup.provisioning_uri} size={180} />
                 </div>
                 <div className="text-xs text-gray-500 text-center">
-                  Can't scan? Enter manually: <span className="text-cyan-400 font-mono">{mfaSetup.secret}</span>
+                  Can&apos;t scan? Enter manually: <span className="text-cyan-400 font-mono">{mfaSetup.secret}</span>
                 </div>
                 <div className="flex gap-3">
                   <input
@@ -191,7 +191,7 @@ export default function SettingsPage() {
             {backupCodes.length > 0 && (
               <div className="mt-4 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-xl">
                 <p className="text-yellow-400 text-sm font-semibold mb-2">
-                  ⚠ Save these backup codes — they won't be shown again:
+                  ⚠ Save these backup codes — they won&apos;t be shown again:
                 </p>
                 <div className="grid grid-cols-2 gap-2">
                   {backupCodes.map((code) => (
@@ -302,7 +302,7 @@ export default function SettingsPage() {
               </div>
             </div>
             <p className="text-xs text-gray-600">
-              Once configured, you'll get a Telegram message every time a scan finds critical or high-severity exposures.
+              Once configured, you&apos;ll get a Telegram message every time a scan finds critical or high-severity exposures.
             </p>
           </div>
         </div>

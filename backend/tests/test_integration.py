@@ -370,16 +370,17 @@ class TestTakedownFromFinding:
         async with TestSessionLocal() as db:
             fid = await _seed_finding(db, scan_id, user_id, severity="high")
 
-        r = await client.post(
-            "/api/v1/takedowns/",
-            json={"finding_id": fid, "template_type": "gdpr_removal"},
-            headers=auth_headers,
-        )
-        assert r.status_code in (200, 201)
-        body = r.json()
-        assert body.get("finding_id") == fid or body.get("status") in (
-            "pending", "sent"
-        )
+        with patch("app.tasks.takedown_tasks.send_takedown_request_task.delay") as mock_delay:
+            mock_delay.return_value = MagicMock(id="takedown-task")
+            r = await client.post(
+                "/api/v1/takedowns/",
+                json={"finding_id": fid, "template_type": "gdpr_removal"},
+                headers=auth_headers,
+            )
+            assert r.status_code in (200, 201)
+            body = r.json()
+            takedown_id = body.get("id")
+            mock_delay.assert_called_once_with(takedown_id)
 
     async def test_list_takedowns(self, client: AsyncClient, auth_headers):
         r = await client.get("/api/v1/takedowns/", headers=auth_headers)

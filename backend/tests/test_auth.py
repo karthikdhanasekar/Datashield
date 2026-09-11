@@ -80,8 +80,8 @@ async def test_missing_email_rejected(client):
 # ── Login ─────────────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_login_unverified_user_returns_token(client):
-    """Unverified user can get a token but email_verified=False in /me."""
+async def test_login_unverified_user_is_rejected(client):
+    """Unverified users must verify their email before receiving tokens."""
     await client.post("/api/v1/auth/register", json={
         "email": "unverified@datashield.com",
         "password": "Test@1234!",
@@ -91,9 +91,8 @@ async def test_login_unverified_user_returns_token(client):
         "email": "unverified@datashield.com",
         "password": "Test@1234!",
     })
-    # Login returns 200 — email verification only blocks /me and protected routes
-    assert resp.status_code == 200
-    assert "access_token" in resp.json()
+    assert resp.status_code == 403
+    assert "verify your email" in resp.json()["detail"].lower()
 
 
 @pytest.mark.asyncio

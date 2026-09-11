@@ -219,7 +219,7 @@ export default function SearchPage() {
       ) : hits.length === 0 ? (
         <div className="text-center py-20 text-gray-600">
           <AlertTriangle className="w-10 h-10 mx-auto mb-3 opacity-30" />
-          <p>No findings match <span className="text-gray-400">"{debouncedQ}"</span></p>
+          <p>No findings match <span className="text-gray-400">&quot;{debouncedQ}&quot;</span></p>
           {(severity || findingType) && (
             <button onClick={clearFilters} className="mt-3 text-cyan-400 text-sm hover:underline">
               Clear filters and try again
@@ -233,7 +233,7 @@ export default function SearchPage() {
             <span>
               {isFetching && <Loader2 className="w-3 h-3 animate-spin inline mr-1" />}
               {total.toLocaleString()} result{total !== 1 ? 's' : ''} for{' '}
-              <span className="text-white">"{debouncedQ}"</span>
+              <span className="text-white">&quot;{debouncedQ}&quot;</span>
             </span>
             <span className={`text-xs px-2 py-0.5 rounded-full border ${
               source === 'elasticsearch'

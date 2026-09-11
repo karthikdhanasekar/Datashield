@@ -40,7 +40,7 @@ export default function ForgotPasswordPage() {
             <span className="text-2xl font-black text-white">DataShield <span className="text-cyan-400">OSINT</span></span>
           </div>
           <h1 className="text-3xl font-bold text-white mb-2">Reset Password</h1>
-          <p className="text-gray-400">Enter your email and we'll send a reset link</p>
+          <p className="text-gray-400">Enter your email and we&apos;ll send a reset link</p>
         </div>
 
         <div className="glass-card p-8">
@@ -51,7 +51,7 @@ export default function ForgotPasswordPage() {
               </div>
               <h2 className="text-xl font-bold text-white">Check your inbox</h2>
               <p className="text-gray-400 text-sm">
-                If an account exists for that email, a reset link has been sent. Check spam if you don't see it.
+                If an account exists for that email, a reset link has been sent. Check spam if you don&apos;t see it.
               </p>
               <Link href="/auth/login" className="flex items-center justify-center gap-2 text-cyan-400 hover:text-cyan-300 text-sm transition-colors mt-4">
                 <ArrowLeft className="w-4 h-4" /> Back to Sign In

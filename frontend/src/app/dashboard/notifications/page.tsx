@@ -90,7 +90,7 @@ export default function NotificationsPage() {
         <div className="text-center py-16 text-gray-500">
           <Bell className="w-10 h-10 mx-auto mb-3 opacity-30" />
           <p>No notifications yet.</p>
-          <p className="text-sm mt-1">You'll be alerted when scans complete, data is found, or takedowns are processed.</p>
+          <p className="text-sm mt-1">You&apos;ll be alerted when scans complete, data is found, or takedowns are processed.</p>
         </div>
       ) : (
         <div className="space-y-2">
